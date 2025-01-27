@@ -1,0 +1,97 @@
+#include <Servo.h>
+
+// Frequency modes for TIMER4
+#define PWM187k 1   // 187500 Hz
+
+// Direct PWM change variables
+#define PWM13       OCR4A
+#define PWM6_13_MAX OCR4C
+
+#define TRIG_PITCH 9
+#define ECHO_PITCH 10
+#define TRIG_VOL 6
+#define ECHO_VOL 7
+#define BUZZER_PIN 11
+#define VOL_CONTROLPIN 13
+
+void pwm613configure(int mode) {
+  // TCCR4A configuration
+  TCCR4A=0;
+  
+  // TCCR4B configuration
+  TCCR4B=mode;
+  
+  // TCCR4C configuration
+  TCCR4C=0;
+  
+  // TCCR4D configuration
+  TCCR4D=0;
+  
+  // PLL Configuration
+  // Use 96MHz / 2 = 48MHz
+  PLLFRQ=(PLLFRQ&0xCF)|0x30;
+  
+  // Terminal count for Timer 4 PWM
+  OCR4C=255;
+}
+
+void pwmSet13(int value) {
+  OCR4A=value;   // Set PWM value
+  DDRC|=1<<7;    // Set Output Mode C7
+  TCCR4A=0x82;  // Activate channel A
+}
+
+void setup() {
+  pwm613configure(PWM187k);
+  pwmSet13(192);
+  
+  pinMode(TRIG_PITCH, OUTPUT);
+  pinMode(ECHO_PITCH, INPUT);
+  pinMode(TRIG_VOL, OUTPUT);
+  pinMode(ECHO_VOL, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(VOL_CONTROLPIN, OUTPUT);
+  
+  Serial.begin(9600);
+}
+
+void loop() {
+  int recentData[2] = {};
+  // Measure distance for pitch
+  long pitchDuration = measureDistance(TRIG_PITCH, ECHO_PITCH);
+  float pitchDistance = pitchDuration * 0.034 / 2;
+  int frequency = map(pitchDistance, 2, 100, 200, 2000);
+  
+  // Measure distance for volume
+  long volDuration = measureDistance(TRIG_VOL, ECHO_VOL);
+  float volDistance = volDuration * 0.034 / 2;
+  int volume = map(volDistance, 2, 240, 255, 2);
+
+  // Play sound with mapped volume
+  if (pitchDistance > 2 && pitchDistance < 100 && volDistance > 2 && volDistance < 100) {
+    analogWrite(VOL_CONTROLPIN, volume);
+    tone(BUZZER_PIN, frequency);
+  } else {
+    noTone(BUZZER_PIN);
+  }
+  // Send data in a consistent format
+  // Serial.println(frequency);
+  // Serial.print(",");
+  // Serial.println(volume);  // Using println for the last value adds the newline
+  recentData[0] = frequency;
+  recentData[1] = volume;
+  
+  Serial.print(recentData[0]);
+  Serial.println(recentData[1]);
+  
+  delay(50); // Reduced delay for more responsive updates
+}
+
+long measureDistance(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  return pulseIn(echoPin, HIGH);
+}
